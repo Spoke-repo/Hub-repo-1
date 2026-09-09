@@ -1,0 +1,66 @@
+name: "onboarding/iac_pipeline_creation"
+description: "Scaffolds a nonprod/prod Terraform IaC workflow + matching iac/<env>/<module>/terraform.tfvars folder for a new module in a spoke repo."
+
+inputs:
+  target_repo:
+    required: true
+  module_name:
+    description: "e.g. aks_module, app_service_module, storage_account_module"
+    required: true
+  platform_env:
+    description: "nonprod or prod"
+    required: true
+  product_env:
+    description: "Optional sub-environment under nonprod, e.g. dev, int"
+    required: false
+    default: ""
+  github_token:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout hub templates
+      uses: actions/checkout@v4
+      with:
+        path: hub-templates
+
+    - name: Checkout target spoke repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.target_repo }}
+        token: ${{ inputs.github_token }}
+        path: target-repo
+
+    - name: Render workflow + tfvars folder
+      shell: bash
+      run: |
+        set -e
+        WF_NAME="${{ inputs.platform_env }}_${{ inputs.module_name }}"
+        if [ -n "${{ inputs.product_env }}" ]; then
+          WF_NAME="${WF_NAME}_${{ inputs.product_env }}"
+          TFVARS_DIR="target-repo/iac/${{ inputs.platform_env }}/${{ inputs.product_env }}/${{ inputs.module_name }}"
+        else
+          TFVARS_DIR="target-repo/iac/${{ inputs.platform_env }}/${{ inputs.module_name }}"
+        fi
+
+        mkdir -p target-repo/.github/workflows
+        sed \
+          -e "s/{{module_name}}/${{ inputs.module_name }}/g" \
+          -e "s/{{platform_env}}/${{ inputs.platform_env }}/g" \
+          -e "s/{{tfvars_path}}/${TFVARS_DIR#target-repo/}\/terraform.tfvars/g" \
+          hub-templates/onboarding/templates/iac_pipeline.yml.tmpl \
+          > "target-repo/.github/workflows/${WF_NAME}.yml"
+
+        mkdir -p "${TFVARS_DIR}"
+        [ -f "${TFVARS_DIR}/terraform.tfvars" ] || echo "# ${{ inputs.module_name }} (${{ inputs.platform_env }}) - fill in values" > "${TFVARS_DIR}/terraform.tfvars"
+
+    - name: Commit and push scaffold
+      shell: bash
+      working-directory: target-repo
+      run: |
+        git config user.name "onboarding-bot"
+        git config user.email "onboarding-bot@users.noreply.github.com"
+        git add -A
+        git diff --cached --quiet || git commit -m "chore: scaffold ${{ inputs.platform_env }} IaC pipeline for ${{ inputs.module_name }}"
+        git push

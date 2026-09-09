@@ -1,0 +1,34 @@
+name: {{platform_env}}-{{module_name}}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "iac/{{platform_env}}/**"
+  workflow_dispatch:
+    inputs:
+      tf_action:
+        description: "plan | apply | destroy"
+        required: true
+        default: "plan"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: <your-runner-label>
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy {{module_name}}
+        uses: Spoke-repo/Hub-repo-1/spoke/{{module_name}}@v1
+        with:
+          working_directory: iac/{{tfvars_path}}
+          tfvars_path: {{tfvars_path}}
+          environment: {{platform_env}}
+          tf_action: ${{ github.event.inputs.tf_action || 'plan' }}
+          azure_client_id: ${{ secrets.AZ_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZ_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZ_SUBSCRIPTION_ID }}

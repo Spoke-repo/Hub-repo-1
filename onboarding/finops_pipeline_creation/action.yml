@@ -1,0 +1,58 @@
+name: "onboarding/finops_pipeline_creation"
+description: "Scaffolds a scheduled start/stop FinOps workflow for a given resource type in a spoke repo (nonprod cost savings)."
+
+inputs:
+  target_repo:
+    required: true
+  resource_type:
+    description: "aks | psql | appservice | adminvm"
+    required: true
+  resource_name:
+    description: "Human-friendly name used in the generated file name, e.g. sample"
+    required: true
+  cron_start:
+    description: "Cron schedule to start the resource"
+    required: true
+  cron_stop:
+    description: "Cron schedule to stop the resource"
+    required: true
+  github_token:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout hub templates
+      uses: actions/checkout@v4
+      with:
+        path: hub-templates
+
+    - name: Checkout target spoke repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.target_repo }}
+        token: ${{ inputs.github_token }}
+        path: target-repo
+
+    - name: Render FinOps workflow
+      shell: bash
+      run: |
+        set -e
+        mkdir -p target-repo/.github/workflows
+        sed \
+          -e "s/{{resource_type}}/${{ inputs.resource_type }}/g" \
+          -e "s/{{resource_name}}/${{ inputs.resource_name }}/g" \
+          -e "s/{{cron_start}}/${{ inputs.cron_start }}/g" \
+          -e "s/{{cron_stop}}/${{ inputs.cron_stop }}/g" \
+          hub-templates/onboarding/templates/finops_pipeline.yml.tmpl \
+          > "target-repo/.github/workflows/finops_${{ inputs.resource_type }}_${{ inputs.resource_name }}_nonprod.yml"
+
+    - name: Commit and push scaffold
+      shell: bash
+      working-directory: target-repo
+      run: |
+        git config user.name "onboarding-bot"
+        git config user.email "onboarding-bot@users.noreply.github.com"
+        git add -A
+        git diff --cached --quiet || git commit -m "chore: scaffold finops schedule for ${{ inputs.resource_type }}/${{ inputs.resource_name }}"
+        git push

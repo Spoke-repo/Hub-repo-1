@@ -1,0 +1,31 @@
+name: "finops/psql/start_server"
+description: "Starts a stopped Azure PostgreSQL Flexible Server (nonprod cost savings schedule)."
+
+inputs:
+  resource_group:
+    required: true
+  server_name:
+    required: true
+  azure_client_id:
+    required: true
+  azure_tenant_id:
+    required: true
+  azure_subscription_id:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Azure login (OIDC)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: Start PostgreSQL Flexible Server
+      shell: bash
+      run: |
+        az postgres flexible-server start \
+          --resource-group "${{ inputs.resource_group }}" \
+          --name "${{ inputs.server_name }}"

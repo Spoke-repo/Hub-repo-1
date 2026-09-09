@@ -1,0 +1,57 @@
+name: finops-{{resource_type}}-{{resource_name}}-nonprod
+
+on:
+  schedule:
+    - cron: "{{cron_stop}}"
+    - cron: "{{cron_start}}"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "start | stop"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.pick.outputs.mode }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "{{cron_start}}" ]; then
+            echo "mode=start" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=stop" >> "$GITHUB_OUTPUT"
+          fi
+
+  start:
+    needs: decide
+    if: needs.decide.outputs.mode == 'start'
+    runs-on: <your-runner-label>
+    steps:
+      - uses: Spoke-repo/Hub-repo-1/finops/{{resource_type}}/start_aks_cluster@v1
+        with:
+          resource_group: <your-resource-group>
+          cluster_name: {{resource_name}}
+          azure_client_id: ${{ secrets.AZ_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZ_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZ_SUBSCRIPTION_ID }}
+
+  stop:
+    needs: decide
+    if: needs.decide.outputs.mode == 'stop'
+    runs-on: <your-runner-label>
+    steps:
+      - uses: Spoke-repo/Hub-repo-1/finops/{{resource_type}}/stop_aks_cluster@v1
+        with:
+          resource_group: <your-resource-group>
+          cluster_name: {{resource_name}}
+          azure_client_id: ${{ secrets.AZ_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZ_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZ_SUBSCRIPTION_ID }}

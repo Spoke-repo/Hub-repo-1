@@ -1,0 +1,27 @@
+name: pipeline-creation-maintainer
+
+on:
+  workflow_dispatch:
+    inputs:
+      module_name:
+        description: "Terraform module to scaffold (e.g. aks_module)"
+        required: true
+      platform_env:
+        description: "nonprod or prod"
+        required: true
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scaffold IaC pipeline
+        uses: Spoke-repo/Hub-repo-1/onboarding/iac_pipeline_creation@v1
+        with:
+          target_repo: <your-product>-infra
+          module_name: ${{ github.event.inputs.module_name }}
+          platform_env: ${{ github.event.inputs.platform_env }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

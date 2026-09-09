@@ -1,0 +1,59 @@
+name: "spoke/postgresql_flexiserver_pe_module"
+description: "Deploys a PostgreSQL Flexible Server with a private endpoint via the spoke Terraform module."
+
+inputs:
+  tfvars_path:
+    description: "Path (in the calling spoke repo) to the terraform.tfvars for this module/environment."
+    required: true
+  environment:
+    description: "nonprod or prod"
+    required: true
+  tf_action:
+    description: "plan | apply | destroy"
+    required: false
+    default: "plan"
+  working_directory:
+    description: "Directory containing the terraform.tfvars for this module."
+    required: true
+  azure_client_id:
+    required: true
+  azure_tenant_id:
+    required: true
+  azure_subscription_id:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Azure login (OIDC)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform init -input=false
+
+    - name: Terraform Plan
+      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
+
+    - name: Terraform Apply
+      if: ${{ inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform apply -input=false -auto-approve tfplan
+
+    - name: Terraform Destroy
+      if: ${{ inputs.tf_action == 'destroy' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"

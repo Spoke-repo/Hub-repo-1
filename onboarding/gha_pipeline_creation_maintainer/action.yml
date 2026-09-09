@@ -1,0 +1,51 @@
+name: "onboarding/gha_pipeline_creation_maintainer"
+description: "Scaffolds the base .github/workflows/ and CODEOWNERS for a brand-new spoke repository from this hub's templates."
+
+inputs:
+  target_repo:
+    description: "owner/repo of the new spoke repository to scaffold."
+    required: true
+  product_name:
+    description: "Product name used to render <your-product> in templates."
+    required: true
+  team_slug_or_handle:
+    description: "GitHub team slug or @handle to put in CODEOWNERS."
+    required: true
+  github_token:
+    description: "Token with push access to target_repo."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout hub templates
+      uses: actions/checkout@v4
+      with:
+        path: hub-templates
+
+    - name: Checkout target spoke repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.target_repo }}
+        token: ${{ inputs.github_token }}
+        path: target-repo
+
+    - name: Render and copy base workflow templates
+      shell: bash
+      run: |
+        set -e
+        mkdir -p target-repo/.github/workflows
+        cp hub-templates/onboarding/templates/*.yml target-repo/.github/workflows/ 2>/dev/null || true
+        sed -i "s/<your-product>/${{ inputs.product_name }}/g" target-repo/.github/workflows/*.yml || true
+        cp hub-templates/onboarding/templates/CODEOWNERS target-repo/CODEOWNERS 2>/dev/null || true
+        sed -i "s#<your-team>#${{ inputs.team_slug_or_handle }}#g" target-repo/CODEOWNERS || true
+
+    - name: Commit and push scaffold
+      shell: bash
+      working-directory: target-repo
+      run: |
+        git config user.name "onboarding-bot"
+        git config user.email "onboarding-bot@users.noreply.github.com"
+        git add -A
+        git diff --cached --quiet || git commit -m "chore: scaffold base pipeline via onboarding/gha_pipeline_creation_maintainer"
+        git push

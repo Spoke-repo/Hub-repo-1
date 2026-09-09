@@ -1,0 +1,6 @@
+# Review when someone opens a pull request.
+*  <your-team>
+
+# Optional: scope specific paths to specialised teams.
+# iac/prod/**            @Spoke-repo/platform-reviewers
+# .github/workflows/**   @Spoke-repo/devops

@@ -1,0 +1,31 @@
+name: "finops/aks/stop_aks_cluster"
+description: "Stops a running AKS cluster (used for scheduled nonprod cost savings)."
+
+inputs:
+  resource_group:
+    required: true
+  cluster_name:
+    required: true
+  azure_client_id:
+    required: true
+  azure_tenant_id:
+    required: true
+  azure_subscription_id:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Azure login (OIDC)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: Stop AKS cluster
+      shell: bash
+      run: |
+        az aks stop \
+          --resource-group "${{ inputs.resource_group }}" \
+          --name "${{ inputs.cluster_name }}"
