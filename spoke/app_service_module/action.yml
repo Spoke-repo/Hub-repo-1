@@ -1,3 +1,4 @@
+cat > spoke/app_service_module/action.yml <<'EOF'
 name: "spoke/app_service_module"
 description: "Deploys an Azure App Service via the spoke Terraform module."
 
@@ -6,7 +7,7 @@ inputs:
     description: "terraform.tfvars path, relative to working_directory."
     required: true
   backend_config_path:
-    description: "Backend config file (e.g. backend-nonprod.tfvars), relative to working_directory."
+    description: "Backend config file, relative to working_directory."
     required: false
     default: "backend-nonprod.tfvars"
   environment:
@@ -39,7 +40,7 @@ runs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
 
-    - name: Set Terraform auth (use the az login session)
+    - name: Set Terraform auth
       shell: bash
       run: |
         echo "ARM_USE_CLI=true" >> "$GITHUB_ENV"
@@ -53,19 +54,19 @@ runs:
         printf 'terraform {\n  backend "azurerm" {}\n}\n' > backend.tf
         cat backend.tf
 
-    - name: Terraform Init (remote backend)
+    - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
         terraform init -input=false -reconfigure \
           -backend-config="${{ inputs.backend_config_path }}"
 
-    - name: Verify remote backend is in use
+    - name: Verify remote backend
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
         grep -q '"type": "azurerm"' .terraform/terraform.tfstate \
-          || { echo "ERROR: backend is not azurerm (local state in use)"; exit 1; }
+          || { echo "ERROR: local state in use"; exit 1; }
         echo "Backend OK:"
         grep -E '"(storage_account_name|container_name|key)"' .terraform/terraform.tfstate
 
@@ -92,206 +93,8 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+EOF
 
-    - name: Set Terraform auth (use the az login session)
-      shell: bash
-      run: |
-        echo "ARM_USE_CLI=true" >> "$GITHUB_ENV"
-        echo "ARM_TENANT_ID=${{ inputs.azure_tenant_id }}" >> "$GITHUB_ENV"
-        echo "ARM_SUBSCRIPTION_ID=${{ inputs.azure_subscription_id }}" >> "$GITHUB_ENV"
-
-    - name: Add backend block
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        printf 'terraform {\n  backend "azurerm" {}\n}\n' > backend.tf
-        cat backend.tf
-
-    - name: Terraform Init (remote backend)
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        terraform init -input=false -reconfigure \
-          -backend-config="${{ inputs.backend_config_path }}"
-
-    - name: Verify remote backend is in use
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        grep -q '"type": "azurerm"' .terraform/terraform.tfstate \
-          || { echo "ERROR: backend is not azurerm (local state in use)"; exit 1; }
-        echo "Backend OK:"
-        grep -E '"(storage_account_name|container_name|key)"' .terraform/terraform.tfstate
-
-    - name: Terraform Plan
-      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
-
-    - name: Terraform Apply
-      if: ${{ inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform apply -input=false -auto-approve tfplan
-
-    - name: Show state
-      if: ${{ inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform state list
-
-    - name: Terraform Destroy
-      if: ${{ inputs.tf_action == 'destroy' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
-    - name: Add backend block
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        cat > backend.tf <<'EOF'
-        terraform {
-          backend "azurerm" {}
-        }
-        EOF
-
-    - name: Terraform Init
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_CLI: "true"
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-        TF_LOG: DEBUG
-      run: |
-        COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
-        echo "State file: ${COMP_PATH}.tfstate"
-        rc=0
-        terraform init
-    - name: Add backend block
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        cat > backend.tf <<'EOF'
-        terraform {
-          backend "azurerm" {}
-        }
-        EOF
-
-    - name: Terraform Init
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_CLI: "true"
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-        TF_LOG: DEBUG
-      run: |
-        COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
-        echo "State file: ${COMP_PATH}.tfstate"
-        rc=0
-        terraform init -input=false \
-          -backend-config="$GITHUB_WORKSPACE/iac/${{ inputs.environment }}/backend.hcl" \
-          -backend-config="key=${COMP_PATH}.tfstate" > init.log 2>&1 || rc=$?
-        grep -iE "www-authenticate|error_description|Error:" init.log | cut -c1-600 || true
-        rm -f init.log
-        exit $rc
-
-    - name: Terraform Plan
-      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_OIDC: "true"
-        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-      run: terraform plan -input=false
-    - name: Add backend block
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        cat > backend.tf <<'EOF'
-        terraform {
-          backend "azurerm" {}
-        }
-        EOF
-
-        - name: Terraform Init
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_CLI: "true"
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-        TF_LOG: DEBUG
-      run: |
-        COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
-        echo "State file: ${COMP_PATH}.tfstate"
-        terraform --version
-        terraform init -input=false \
-          -backend-config="$GITHUB_WORKSPACE/iac/${{ inputs.environment }}/backend.hcl" \
-          -backend-config="key=${COMP_PATH}.tfstate" 2>&1 | grep -iE "www-authenticate|error_description|issuer|audience|Terraform v|Error" || true
-        exit ${PIPESTATUS[0]}
-
-    - name: Terraform Plan
-      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_OIDC: "true"
-        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
-
-    - name: Terraform Apply
-      if: ${{ inputs.tf_action == 'apply' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_OIDC: "true"
-        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-      run: terraform apply -input=false -auto-approve tfplan
-
-    - name: Terraform Destroy
-      if: ${{ inputs.tf_action == 'destroy' }}
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_OIDC: "true"
-        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
-    - name: Add backend block
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        cat > backend.tf <<'EOF'
-        terraform {
-          backend "azurerm" {}
-        }
-        EOF
-
-    - name: Debug backend and identity
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        az account show --query "{tenant:tenantId, sub:id, user:user.name}" -o json
-        az storage blob list --account-name sttfstate347nonprod --container-name appservice --auth-mode login -o table || true
-        env | grep -o '^ARM_[A-Z_]*' || true
-
-    - name: Terraform Init
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        ARM_USE_CLI: "true"
-        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
-        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-      run: |
+wc -l spoke/app_service_module/action.yml          # expect about 94
+grep -c "^    - name:" spoke/app_service_module/action.yml   # expect 10
+git add -A && git commit -m "Replace action.yml" && git push origin main
