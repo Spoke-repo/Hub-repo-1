@@ -7,7 +7,8 @@ inputs:
     required: true
   backend_config_path:
     description: "Backend config file (e.g. backend-nonprod.tfvars), relative to working_directory."
-    required: true
+    required: false
+    default: "backend-nonprod.tfvars"
   environment:
     description: "nonprod or prod"
     required: true
@@ -35,6 +36,62 @@ runs:
         tenant-id: ${{ inputs.azure_tenant_id }}
         subscription-id: ${{ inputs.azure_subscription_id }}
 
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Set Terraform auth (use the az login session)
+      shell: bash
+      run: |
+        echo "ARM_USE_CLI=true" >> "$GITHUB_ENV"
+        echo "ARM_TENANT_ID=${{ inputs.azure_tenant_id }}" >> "$GITHUB_ENV"
+        echo "ARM_SUBSCRIPTION_ID=${{ inputs.azure_subscription_id }}" >> "$GITHUB_ENV"
+
+    - name: Add backend block
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        printf 'terraform {\n  backend "azurerm" {}\n}\n' > backend.tf
+        cat backend.tf
+
+    - name: Terraform Init (remote backend)
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        terraform init -input=false -reconfigure \
+          -backend-config="${{ inputs.backend_config_path }}"
+
+    - name: Verify remote backend is in use
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        grep -q '"type": "azurerm"' .terraform/terraform.tfstate \
+          || { echo "ERROR: backend is not azurerm (local state in use)"; exit 1; }
+        echo "Backend OK:"
+        grep -E '"(storage_account_name|container_name|key)"' .terraform/terraform.tfstate
+
+    - name: Terraform Plan
+      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
+
+    - name: Terraform Apply
+      if: ${{ inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform apply -input=false -auto-approve tfplan
+
+    - name: Show state
+      if: ${{ inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform state list
+
+    - name: Terraform Destroy
+      if: ${{ inputs.tf_action == 'destroy' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
 
