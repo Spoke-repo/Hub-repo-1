@@ -45,6 +45,45 @@ runs:
         }
         EOF
 
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_CLI: "true"
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+        TF_LOG: DEBUG
+      run: |
+        COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
+        echo "State file: ${COMP_PATH}.tfstate"
+        rc=0
+        terraform init -input=false \
+          -backend-config="$GITHUB_WORKSPACE/iac/${{ inputs.environment }}/backend.hcl" \
+          -backend-config="key=${COMP_PATH}.tfstate" > init.log 2>&1 || rc=$?
+        grep -iE "www-authenticate|error_description|Error:" init.log | cut -c1-600 || true
+        rm -f init.log
+        exit $rc
+
+    - name: Terraform Plan
+      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform plan -input=false
+    - name: Add backend block
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        cat > backend.tf <<'EOF'
+        terraform {
+          backend "azurerm" {}
+        }
+        EOF
+
         - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.working_directory }}
