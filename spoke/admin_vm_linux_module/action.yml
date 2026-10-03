@@ -3,8 +3,12 @@ description: "Deploys a Linux admin/jump-box VM via the spoke Terraform module."
 
 inputs:
   tfvars_path:
-    description: "Path (in the calling spoke repo) to the terraform.tfvars for this module/environment."
+    description: "terraform.tfvars path, relative to working_directory."
     required: true
+  backend_config_path:
+    description: "Backend config file, relative to working_directory."
+    required: false
+    default: "backend-nonprod.tfvars"
   environment:
     description: "nonprod or prod"
     required: true
@@ -13,7 +17,7 @@ inputs:
     required: false
     default: "plan"
   working_directory:
-    description: "Directory containing the terraform.tfvars for this module."
+    description: "Directory containing the .tf files and terraform.tfvars."
     required: true
   azure_client_id:
     required: true
@@ -35,10 +39,35 @@ runs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
 
+    - name: Set Terraform auth
+      shell: bash
+      run: |
+        echo "ARM_USE_CLI=true" >> "$GITHUB_ENV"
+        echo "ARM_TENANT_ID=${{ inputs.azure_tenant_id }}" >> "$GITHUB_ENV"
+        echo "ARM_SUBSCRIPTION_ID=${{ inputs.azure_subscription_id }}" >> "$GITHUB_ENV"
+
+    - name: Add backend block
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        printf 'terraform {\n  backend "azurerm" {}\n}\n' > backend.tf
+        cat backend.tf
+
     - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.working_directory }}
-      run: terraform init -input=false
+      run: |
+        terraform init -input=false -reconfigure \
+          -backend-config="${{ inputs.backend_config_path }}"
+
+    - name: Verify remote backend
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        grep -q '"type": "azurerm"' .terraform/terraform.tfstate \
+          || { echo "ERROR: local state in use"; exit 1; }
+        echo "Backend OK:"
+        grep -E '"(storage_account_name|container_name|key)"' .terraform/terraform.tfstate
 
     - name: Terraform Plan
       if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
@@ -51,6 +80,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: terraform apply -input=false -auto-approve tfplan
+
+    - name: Show state
+      if: ${{ inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform state list
 
     - name: Terraform Destroy
       if: ${{ inputs.tf_action == 'destroy' }}
