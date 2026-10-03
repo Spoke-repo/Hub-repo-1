@@ -45,19 +45,22 @@ runs:
         }
         EOF
 
-    - name: Terraform Init
+        - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       env:
         ARM_USE_CLI: "true"
         ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
         ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+        TF_LOG: DEBUG
       run: |
         COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
         echo "State file: ${COMP_PATH}.tfstate"
+        terraform --version
         terraform init -input=false \
           -backend-config="$GITHUB_WORKSPACE/iac/${{ inputs.environment }}/backend.hcl" \
-          -backend-config="key=${COMP_PATH}.tfstate"
+          -backend-config="key=${COMP_PATH}.tfstate" 2>&1 | grep -iE "www-authenticate|error_description|issuer|audience|Terraform v|Error" || true
+        exit ${PIPESTATUS[0]}
 
     - name: Terraform Plan
       if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
