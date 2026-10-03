@@ -92,6 +92,63 @@ runs:
         ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
         ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
       run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
+    - name: Add backend block
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        cat > backend.tf <<'EOF'
+        terraform {
+          backend "azurerm" {}
+        }
+        EOF
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: |
+        COMP_PATH=$(echo "${{ inputs.working_directory }}" | sed -E "s#^(\./)?iac/${{ inputs.environment }}/##")
+        echo "State file: ${COMP_PATH}.tfstate"
+        terraform init -input=false \
+          -backend-config="$GITHUB_WORKSPACE/iac/${{ inputs.environment }}/backend.hcl" \
+          -backend-config="key=${COMP_PATH}.tfstate"
+
+    - name: Terraform Plan
+      if: ${{ inputs.tf_action == 'plan' || inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
+
+    - name: Terraform Apply
+      if: ${{ inputs.tf_action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform apply -input=false -auto-approve tfplan
+
+    - name: Terraform Destroy
+      if: ${{ inputs.tf_action == 'destroy' }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
     # NEW: copies the module code from the hub into the spoke folder.
     # Remove this step if your .tf files are already in the spoke folder.
     - name: Copy module code
