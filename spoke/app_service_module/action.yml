@@ -1,4 +1,3 @@
-cat > spoke/app_service_module/action.yml <<'EOF'
 name: "spoke/app_service_module"
 description: "Deploys an Azure App Service via the spoke Terraform module."
 
@@ -93,8 +92,3 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
-EOF
-
-wc -l spoke/app_service_module/action.yml          # expect about 94
-grep -c "^    - name:" spoke/app_service_module/action.yml   # expect 10
-git add -A && git commit -m "Replace action.yml" && git push origin main
