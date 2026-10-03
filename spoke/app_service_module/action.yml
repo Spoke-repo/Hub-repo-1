@@ -49,8 +49,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       env:
-        ARM_USE_OIDC: "true"
-        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_USE_CLI: "true"
         ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
         ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
       run: |
