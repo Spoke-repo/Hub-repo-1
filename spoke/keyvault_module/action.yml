@@ -34,10 +34,6 @@ runs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
 
-    - name: Copy module code into working directory
-      shell: bash
-      run: cp ${{ github.action_path }}/*.tf "${{ inputs.working_directory }}/"
-
     - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.working_directory }}
