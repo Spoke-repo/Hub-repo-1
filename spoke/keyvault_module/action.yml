@@ -1,0 +1,87 @@
+name: "Terraform Key Vault"
+description: "Plan/apply/destroy an Azure Key Vault"
+
+inputs:
+  working_directory:
+    required: true
+  tfvars_path:
+    required: true
+  backend_config_path:
+    required: false
+    default: ""
+  environment:
+    required: true
+  tf_action:
+    required: true
+    default: "plan"
+  azure_client_id:
+    required: true
+  azure_tenant_id:
+    required: true
+  azure_subscription_id:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Azure login (OIDC)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Copy module code into working directory
+      shell: bash
+      run: cp ${{ github.action_path }}/*.tf "${{ inputs.working_directory }}/"
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: |
+        if [ -n "${{ inputs.backend_config_path }}" ]; then
+          terraform init -input=false -backend-config="${{ inputs.backend_config_path }}"
+        else
+          terraform init -input=false
+        fi
+
+    - name: Terraform Plan
+      if: inputs.tf_action == 'plan' || inputs.tf_action == 'apply'
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan
+
+    - name: Terraform Apply
+      if: inputs.tf_action == 'apply'
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform apply -input=false tfplan
+
+    - name: Terraform Destroy
+      if: inputs.tf_action == 'destroy'
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_CLIENT_ID: ${{ inputs.azure_client_id }}
+        ARM_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+      run: terraform destroy -input=false -auto-approve -var-file="${{ inputs.tfvars_path }}"
